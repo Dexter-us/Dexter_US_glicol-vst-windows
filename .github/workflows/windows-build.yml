@@ -1,0 +1,21 @@
+name: Windows patch validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Regression tests and release build
+        shell: pwsh
+        run: ./scripts/windows-build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glicol-vst-windows-x64
+          path: target/release/glicol_vst.dll
+          if-no-files-found: error
