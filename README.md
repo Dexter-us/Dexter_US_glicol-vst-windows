@@ -1,31 +1,26 @@
-## Introduction
+# Glicol VST — Windows VST3 edition
 
-**Windows patch copy:** see [WINDOWS-PATCH.md](WINDOWS-PATCH.md) for the fixes,
-build instructions, latency details, and host acceptance checks.
+A separate MIT-licensed VST3 port of the Glicol stereo code-based audio effect.
 
-Glicol should now be able to run on every DAW:
-https://www.youtube.com/watch?v=tmmBhBmIEW0
+- Product: **Glicol VST**
+- Manufacturer: **Dexter U.S.**
+- Format: **VST3**, 64-bit Windows, stereo effect, no MIDI
+- Latency: **128 samples**, declared to the host
+- UI: code editor with visible **Run** button and click-to-focus handling
+- State: the last submitted program is persisted in VST3 projects/presets
 
-Modified on top of:
-https://github.com/DGriffin91/egui_baseview_test_vst2
+See [WINDOWS-VST3.md](WINDOWS-VST3.md) for build, installation, limitations,
+and actual Windows/Cakewalk acceptance checks.
 
-## Todo
+The VST2 edition remains unchanged on the private repository's `main` branch.
+This source is maintained separately on the `vst3` branch. It uses the existing
+Windows build workflow without changing its authorization-sensitive file.
+The workflow's raw `glicol_vst.dll` artifact is a **VST3 module** on this branch;
+it must be packaged into `Glicol VST.vst3/Contents/x86_64-win/Glicol VST.vst3`.
+Use the installation ZIP rather than dropping that CI DLL into a VST2 folder.
 
-- [x] support input, so that you can live coding an effect
-- [ ] work on midi i/o
-- [ ] support ableton link?
-
-## Usage: macOS (Tested on M1; need to test on previous models)
-Run `sudo zsh scripts/macos-build-and-install.sh`
-> For M1 users, run `sudo zsh scripts/m1.sh`
-Start your DAW, test the plugin
-
-## Usage: Windows (Untested)
-Run `cargo build`
-Copy `target/debug/glicol_vst.dll` to your VST plugin folder
-Start your DAW, test the plugin
-
-## Usage: Linux (Untested)
-Run `cargo build`
-Copy `target/debug/glicol_vst.so` to your VST plugin folder
-Start your DAW, test the plugin
+The source is based on the original MIT-licensed
+[Glicol VST](https://github.com/glicol/glicol-vst). No upstream repository was changed.
+The VST3 integration uses the ISC-licensed nice-plug framework and permissively
+licensed VST3 bindings. Native regression tests are not proof of host keyboard
+behavior: complete the real-host checklist before considering it confirmed.
