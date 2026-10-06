@@ -136,9 +136,12 @@ fn initialization_declares_latency_and_rejects_wrong_layout() {
     };
     assert!(plugin.initialize(&GlicolVst3::AUDIO_IO_LAYOUTS[0], &config, &mut context));
     assert_eq!(context.0.get(), 128);
-    let mut mono = GlicolVst3::AUDIO_IO_LAYOUTS[0];
-    mono.main_input_channels = NonZeroU32::new(1);
-    assert!(!plugin.initialize(&mono, &config, &mut context));
+    for layout in GlicolVst3::AUDIO_IO_LAYOUTS {
+        assert!(plugin.initialize(layout, &config, &mut context));
+    }
+    let mut unsupported = GlicolVst3::AUDIO_IO_LAYOUTS[0];
+    unsupported.main_input_channels = NonZeroU32::new(3);
+    assert!(!plugin.initialize(&unsupported, &config, &mut context));
     config.sample_rate = f32::NAN;
     assert!(!plugin.initialize(&GlicolVst3::AUDIO_IO_LAYOUTS[0], &config, &mut context));
 }
@@ -179,85 +182,103 @@ fn host_can_create_and_process_through_vst3_interfaces() {
     use vst3::Steinberg::{kResultOk, IPluginBaseTrait, IPluginFactoryTrait, PClassInfo};
     use vst3::{ComPtr, Interface};
 
-    // Exercise the actual exported factory and COM ABI, not just Rust DSP methods.
-    unsafe {
-        let factory = ComPtr::from_raw(GetPluginFactory()).unwrap();
-        let mut info: PClassInfo = std::mem::zeroed();
-        assert_eq!(factory.getClassInfo(0, &mut info), kResultOk);
-        let mut instance = null_mut();
-        assert_eq!(
-            factory.createInstance(
-                info.cid.as_ptr(),
-                IComponent::IID.as_ptr().cast(),
-                &mut instance,
-            ),
-            kResultOk,
-        );
-        let component = ComPtr::<IComponent>::from_raw(instance.cast()).unwrap();
-        assert!(component.cast::<IEditController>().is_some());
-        assert_eq!(component.initialize(null_mut()), kResultOk);
-        let processor = component.cast::<IAudioProcessor>().unwrap();
-        let mut setup = ProcessSetup {
-            processMode: 0,        // kRealtime
-            symbolicSampleSize: 0, // kSample32
-            maxSamplesPerBlock: 512,
-            sampleRate: 48000.0,
-        };
-        assert_eq!(processor.setupProcessing(&mut setup), kResultOk);
-        assert_eq!(component.setActive(1), kResultOk);
-        assert_eq!(processor.getLatencySamples(), 128);
-        assert_eq!(processor.setProcessing(1), kResultOk);
+    use vst3::Steinberg::Vst::SpeakerArr::{kMono, kStereo};
+    // Exercise actual host bus negotiation and COM ABI for every layout.
+    for (input_channels, output_channels) in [(2, 2), (1, 1), (1, 2)] {
+        unsafe {
+            let factory = ComPtr::from_raw(GetPluginFactory()).unwrap();
+            let mut info: PClassInfo = std::mem::zeroed();
+            assert_eq!(factory.getClassInfo(0, &mut info), kResultOk);
+            let mut instance = null_mut();
+            assert_eq!(
+                factory.createInstance(
+                    info.cid.as_ptr(),
+                    IComponent::IID.as_ptr().cast(),
+                    &mut instance,
+                ),
+                kResultOk,
+            );
+            let component = ComPtr::<IComponent>::from_raw(instance.cast()).unwrap();
+            assert!(component.cast::<IEditController>().is_some());
+            assert_eq!(component.initialize(null_mut()), kResultOk);
+            let processor = component.cast::<IAudioProcessor>().unwrap();
+            let mut input_arrangement = if input_channels == 1 { kMono } else { kStereo };
+            let mut output_arrangement = if output_channels == 1 { kMono } else { kStereo };
+            assert_eq!(
+                processor.setBusArrangements(&mut input_arrangement, 1, &mut output_arrangement, 1),
+                kResultOk
+            );
+            let mut setup = ProcessSetup {
+                processMode: 0,        // kRealtime
+                symbolicSampleSize: 0, // kSample32
+                maxSamplesPerBlock: 512,
+                sampleRate: 48000.0,
+            };
+            assert_eq!(processor.setupProcessing(&mut setup), kResultOk);
+            assert_eq!(component.setActive(1), kResultOk);
+            assert_eq!(processor.getLatencySamples(), 128);
+            assert_eq!(processor.setProcessing(1), kResultOk);
 
-        let mut position = 0;
-        for size in [32, 64, 128, 192, 256, 512] {
-            let mut input = [vec![0.5; size], vec![-0.25; size]];
-            let mut output = [vec![f32::NAN; size], vec![f32::NAN; size]];
-            let mut in_ptrs = [input[0].as_mut_ptr(), input[1].as_mut_ptr()];
-            let mut out_ptrs = [output[0].as_mut_ptr(), output[1].as_mut_ptr()];
-            let mut input_bus = AudioBusBuffers {
-                numChannels: 2,
-                silenceFlags: 0,
-                __field0: AudioBusBuffers__type0 {
-                    channelBuffers32: in_ptrs.as_mut_ptr(),
-                },
-            };
-            let mut output_bus = AudioBusBuffers {
-                numChannels: 2,
-                silenceFlags: 0,
-                __field0: AudioBusBuffers__type0 {
-                    channelBuffers32: out_ptrs.as_mut_ptr(),
-                },
-            };
-            let mut data = ProcessData {
-                processMode: 0,
-                symbolicSampleSize: 0,
-                numSamples: size as i32,
-                numInputs: 1,
-                numOutputs: 1,
-                inputs: &mut input_bus,
-                outputs: &mut output_bus,
-                inputParameterChanges: null_mut(),
-                outputParameterChanges: null_mut(),
-                inputEvents: null_mut(),
-                outputEvents: null_mut(),
-                processContext: null_mut(),
-            };
-            assert_eq!(processor.process(&mut data), kResultOk);
-            for sample in 0..size {
-                let expected = if position < BLOCK_SIZE {
-                    [0.0; 2]
-                } else {
-                    [0.05, -0.025]
+            let mut position = 0;
+            for size in [32, 64, 128, 192, 256, 512] {
+                let mut input = [vec![0.5; size], vec![-0.25; size]];
+                let mut output = [vec![f32::NAN; size], vec![f32::NAN; size]];
+                let mut in_ptrs = [input[0].as_mut_ptr(), input[1].as_mut_ptr()];
+                let mut out_ptrs = [output[0].as_mut_ptr(), output[1].as_mut_ptr()];
+                let mut input_bus = AudioBusBuffers {
+                    numChannels: input_channels,
+                    silenceFlags: 0,
+                    __field0: AudioBusBuffers__type0 {
+                        channelBuffers32: in_ptrs.as_mut_ptr(),
+                    },
                 };
-                for channel in 0..2 {
-                    assert!((output[channel][sample] - expected[channel]).abs() < 0.00001);
+                let mut output_bus = AudioBusBuffers {
+                    numChannels: output_channels,
+                    silenceFlags: 3,
+                    __field0: AudioBusBuffers__type0 {
+                        channelBuffers32: out_ptrs.as_mut_ptr(),
+                    },
+                };
+                let mut data = ProcessData {
+                    processMode: 0,
+                    symbolicSampleSize: 0,
+                    numSamples: size as i32,
+                    numInputs: 1,
+                    numOutputs: 1,
+                    inputs: &mut input_bus,
+                    outputs: &mut output_bus,
+                    inputParameterChanges: null_mut(),
+                    outputParameterChanges: null_mut(),
+                    inputEvents: null_mut(),
+                    outputEvents: null_mut(),
+                    processContext: null_mut(),
+                };
+                assert_eq!(processor.process(&mut data), kResultOk);
+                assert_eq!(
+                    output_bus.silenceFlags, 0,
+                    "Generated audio must not be marked silent"
+                );
+                assert_eq!(
+                    processor.getTailSamples(),
+                    u32::MAX,
+                    "Host must keep generators alive"
+                );
+                for sample in 0..size {
+                    let expected = if position < BLOCK_SIZE {
+                        [0.0; 2]
+                    } else {
+                        [0.05, if input_channels == 1 { 0.05 } else { -0.025 }]
+                    };
+                    for channel in 0..output_channels as usize {
+                        assert!((output[channel][sample] - expected[channel]).abs() < 0.00001);
+                    }
+                    position += 1;
                 }
-                position += 1;
             }
+            assert_eq!(processor.setProcessing(0), kResultOk);
+            assert_eq!(component.setActive(0), kResultOk);
+            assert_eq!(component.terminate(), kResultOk);
         }
-        assert_eq!(processor.setProcessing(0), kResultOk);
-        assert_eq!(component.setActive(0), kResultOk);
-        assert_eq!(component.terminate(), kResultOk);
     }
 }
 
@@ -265,8 +286,101 @@ fn host_can_create_and_process_through_vst3_interfaces() {
 fn editor_has_visible_fixed_size_and_rejects_invalid_scale() {
     let plugin = GlicolVst3::default();
     let editor = editor::GlicolEditor::new(plugin.params.clone());
-    assert_eq!(editor.size(), (600, 800));
+    assert_eq!(editor.size(), (560, 420));
     assert!(!editor.set_scale_factor(f32::NAN));
     assert!(!editor.set_scale_factor(0.0));
     assert!(editor.set_scale_factor(1.5));
+    assert!(editor.size().1 as f32 * 1.5 <= 600.0);
+    assert!(editor.set_scale_factor(2.0));
+    assert!(editor.size().1 as f32 * 2.0 <= 600.0);
+}
+
+#[test]
+fn run_tone_on_silent_input_applies_without_waiting_for_a_bar() {
+    let mut plugin = GlicolVst3::default();
+    run_buffer(&mut plugin.audio, [vec![0.0; 1024], vec![0.0; 1024]]);
+    plugin.params.submit(TEST_TONE.into()).unwrap();
+    let output = run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    let peak = output[0].iter().fold(0.0_f32, |a, v| a.max(v.abs()));
+    assert!(peak > 0.04 && peak <= 0.051);
+    assert!(plugin.params.diagnostics.peaks().1 > 0.04);
+    plugin.params.submit("o: sig 0;".into()).unwrap();
+    let stopped = run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    assert!(stopped[0][BLOCK_SIZE..]
+        .iter()
+        .all(|sample| sample.abs() < 0.00001));
+}
+
+#[test]
+fn mono_and_mono_to_stereo_preserve_audio() {
+    let mut plugin = GlicolVst3::default();
+    plugin.audio.set_input_channels(1);
+    let mut mono = vec![0.5; 512];
+    let mut buffer = Buffer::default();
+    unsafe {
+        buffer.set_slices(mono.len(), |slices| {
+            slices.clear();
+            slices.push(&mut mono);
+        });
+    }
+    plugin.audio.process(&mut buffer);
+    drop(buffer);
+    assert!(mono[BLOCK_SIZE..]
+        .iter()
+        .all(|v| (*v - 0.05).abs() < 0.00001));
+    plugin.audio.reset();
+    let stereo = run_buffer(&mut plugin.audio, [vec![0.5; 512], vec![0.0; 512]]);
+    for channel in stereo {
+        assert!(channel[BLOCK_SIZE..]
+            .iter()
+            .all(|v| (*v - 0.05).abs() < 0.00001));
+    }
+}
+
+#[test]
+fn engine_errors_remain_visible_until_code_is_fixed() {
+    let mut plugin = GlicolVst3::default();
+    plugin.params.submit("o: ~missing;".into()).unwrap();
+    run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    let error = plugin
+        .params
+        .diagnostics
+        .error()
+        .expect("Error must be visible");
+    assert!(error.contains("missing"), "{error}");
+    // A later successful audio block isn't a successful compile.
+    run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    assert_eq!(
+        plugin.params.diagnostics.error().as_deref(),
+        Some(error.as_str())
+    );
+    plugin.params.submit("o: ~missing;".into()).unwrap();
+    run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    assert!(plugin.params.diagnostics.error().is_some());
+    plugin.params.submit(TEST_TONE.into()).unwrap();
+    let output = run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    assert!(plugin.params.diagnostics.error().is_none());
+    assert!(output[0].iter().any(|sample| sample.abs() > 0.04));
+}
+
+#[test]
+fn editor_controls_and_scroll_clip_fit_short_windows() {
+    let plugin = GlicolVst3::default();
+    for height in [200.0, 300.0, 420.0] {
+        let mut context = egui::CtxRef::default();
+        let mut state = editor::EditorState::new(&plugin.params);
+        state.code = "o: sin 440 >> mul 0.05;\n".repeat(200);
+        context.begin_frame(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(560.0, height),
+            )),
+            ..Default::default()
+        });
+        let (buttons, code_clip) = editor::draw_editor(&context, &plugin.params, &mut state);
+        let _ = context.end_frame();
+        assert!(buttons.bottom() < height);
+        assert!(code_clip.bottom() <= height + 1.0, "{code_clip:?}");
+        assert!(code_clip.height() > 20.0, "{code_clip:?}");
+    }
 }

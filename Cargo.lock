@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "glicol_vst3"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "baseview",
  "egui",
@@ -892,7 +892,6 @@ dependencies = [
 [[package]]
 name = "nice-log"
 version = "0.2.2"
-source = "git+https://github.com/AlexCharlton/nice-plug?rev=50fed0ebabc3b880015d2a06e9436e4220b548f6#50fed0ebabc3b880015d2a06e9436e4220b548f6"
 dependencies = [
  "atty",
  "log",
@@ -905,7 +904,6 @@ dependencies = [
 [[package]]
 name = "nice-plug"
 version = "0.1.0"
-source = "git+https://github.com/AlexCharlton/nice-plug?rev=50fed0ebabc3b880015d2a06e9436e4220b548f6#50fed0ebabc3b880015d2a06e9436e4220b548f6"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -932,7 +930,6 @@ dependencies = [
 [[package]]
 name = "nice-plug-core"
 version = "0.1.2"
-source = "git+https://github.com/AlexCharlton/nice-plug?rev=50fed0ebabc3b880015d2a06e9436e4220b548f6#50fed0ebabc3b880015d2a06e9436e4220b548f6"
 dependencies = [
  "atomic_float",
  "atomic_refcell",
@@ -950,7 +947,6 @@ dependencies = [
 [[package]]
 name = "nice-plug-derive"
 version = "0.1.1"
-source = "git+https://github.com/AlexCharlton/nice-plug?rev=50fed0ebabc3b880015d2a06e9436e4220b548f6#50fed0ebabc3b880015d2a06e9436e4220b548f6"
 dependencies = [
  "proc-macro2",
  "quote",

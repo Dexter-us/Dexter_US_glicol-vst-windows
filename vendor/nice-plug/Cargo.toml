@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["crates/nice-plug", "crates/nice-plug-core", "crates/nice-plug-derive", "crates/nice-log"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.87"
+authors = ["Robbert van der Helm", "Billy Messenger"]
+license = "ISC"
+repository = "https://codeberg.org/BillyDM/nice-plug"
+
+[workspace.dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+atomic_float = "1.1"
+atomic_refcell = "0.1"
+bitflags = "2.11"
+raw-window-handle = "0.5"
+approx = "0.5.1"
+crossbeam = "0.8"
+rtrb = "0.3.3"
+parking_lot = "0.12"
+
+[workspace.dependencies.baseview]
+git = "https://github.com/AlexCharlton/baseview.git"

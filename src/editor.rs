@@ -1,4 +1,4 @@
-use crate::GlicolParams;
+use crate::{GlicolParams, TEST_TONE};
 use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy};
 use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 use nice_plug::prelude::{Editor, GuiContext, ParentWindowHandle};
@@ -6,9 +6,11 @@ use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::any::Any;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-const WIDTH: u32 = 600;
-const HEIGHT: u32 = 800;
+const WIDTH: u32 = 560;
+const HEIGHT: u32 = 420;
+const MAX_PHYSICAL_HEIGHT: f64 = 600.0;
 
 pub struct GlicolEditor {
     params: Arc<GlicolParams>,
@@ -34,18 +36,13 @@ impl Editor for GlicolEditor {
         parent: ParentWindowHandle,
         _context: Arc<dyn GuiContext>,
     ) -> Box<dyn Any + Send> {
-        let mut code = self
-            .params
-            .code
-            .lock()
-            .expect("Program mutex poisoned")
-            .clone();
-        let mut error = None;
+        let mut state = EditorState::new(&self.params);
         let refresh = self.refresh.clone();
+        let (width, height) = self.size();
         let settings = Settings {
             window: WindowOpenOptions {
-                title: "Glicol VST — VST3".into(),
-                size: Size::new(WIDTH as f64, HEIGHT as f64),
+                title: "Glicol VST — VST3 0.1.1".into(),
+                size: Size::new(width as f64, height as f64),
                 scale: WindowScalePolicy::ScaleFactor(*self.scale.lock().unwrap()),
             },
             render_settings: RenderSettings::default(),
@@ -58,29 +55,10 @@ impl Editor for GlicolEditor {
             |_: &egui::CtxRef, _: &mut Queue, _: &mut Arc<GlicolParams>| {},
             move |ctx: &egui::CtxRef, _: &mut Queue, params: &mut Arc<GlicolParams>| {
                 if refresh.swap(false, Ordering::AcqRel) {
-                    code = params.code.lock().expect("Program mutex poisoned").clone();
-                    error = None;
+                    state.code = params.code.lock().expect("Program mutex poisoned").clone();
+                    state.error = None;
                 }
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.label("Glicol VST — VST3 stereo audio effect");
-                    if ui.button("Run").clicked() {
-                        error = params.submit(code.clone()).err();
-                    }
-                    if let Some(error) = error {
-                        ui.label(error);
-                    }
-                    ui.label("Click to type. Route audio into this effect, or run a quiet tone.");
-                    ui.label("Latency: 128 samples. Submitted code is saved with the project.");
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut code)
-                                .code_editor()
-                                .desired_rows(50)
-                                .lock_focus(true)
-                                .desired_width(f32::INFINITY),
-                        );
-                    });
-                });
+                draw_editor(ctx, params, &mut state);
             },
         );
         #[cfg(windows)]
@@ -96,11 +74,18 @@ impl Editor for GlicolEditor {
     }
 
     fn size(&self) -> (u32, u32) {
-        (WIDTH, HEIGHT)
+        let scale = *self.scale.lock().unwrap();
+        (
+            WIDTH.min((900.0 / scale) as u32).max(1),
+            HEIGHT.min((MAX_PHYSICAL_HEIGHT / scale) as u32).max(1),
+        )
     }
 
     fn set_scale_factor(&self, factor: f32) -> bool {
-        if !factor.is_finite() || factor <= 0.0 || self.open.load(Ordering::Acquire) {
+        if !factor.is_finite()
+            || !(0.5..=3.0).contains(&factor)
+            || self.open.load(Ordering::Acquire)
+        {
             return false;
         }
         *self.scale.lock().unwrap() = factor as f64;
@@ -112,6 +97,120 @@ impl Editor for GlicolEditor {
     fn param_values_changed(&self) {
         self.refresh.store(true, Ordering::Release);
     }
+}
+
+pub(crate) struct EditorState {
+    pub code: String,
+    error: Option<&'static str>,
+    previous_code: Option<String>,
+    samples_seen: u64,
+    last_audio: Instant,
+}
+
+impl EditorState {
+    pub fn new(params: &GlicolParams) -> Self {
+        Self {
+            code: params.code.lock().unwrap().clone(),
+            error: None,
+            previous_code: None,
+            samples_seen: 0,
+            last_audio: Instant::now(),
+        }
+    }
+}
+
+// Shared by the real editor and headless layout regression tests.
+// Return control and code clip rectangles for tests.
+pub(crate) fn draw_editor(
+    ctx: &egui::CtxRef,
+    params: &GlicolParams,
+    state: &mut EditorState,
+) -> (egui::Rect, egui::Rect) {
+    let samples = params.diagnostics.processed_samples.load(Ordering::Acquire);
+    if samples != state.samples_seen {
+        state.samples_seen = samples;
+        state.last_audio = Instant::now();
+    }
+    let active = samples > 0 && state.last_audio.elapsed() < Duration::from_secs(2);
+    let (input, output) = params.diagnostics.peaks();
+    let mut buttons_rect = egui::Rect::NOTHING;
+    let mut code_clip = egui::Rect::NOTHING;
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.label("Glicol VST · VST3 0.1.1 · 128-sample latency");
+        let buttons = ui.horizontal_wrapped(|ui| {
+            if ui.button("Run").clicked() {
+                state.error = params.submit(state.code.clone()).err();
+            }
+            if ui.button("Test tone").clicked() {
+                // Audition without throwing away the user's unsent editor draft.
+                state.error = params.submit(TEST_TONE.into()).err();
+                if state.error.is_none() {
+                    if state.previous_code.is_none() {
+                        state.previous_code = Some(state.code.clone());
+                    }
+                    state.code = TEST_TONE.into();
+                }
+            }
+            if ui.button("Mute").clicked() {
+                state.error = params.submit("o: sig 0;".into()).err();
+            }
+            if ui.button("Restore code").clicked() {
+                let restore = state
+                    .previous_code
+                    .clone()
+                    .unwrap_or_else(|| "o: ~input;".into());
+                state.error = params.submit(restore.clone()).err();
+                if state.error.is_none() {
+                    state.code = restore;
+                    state.previous_code = None;
+                }
+            }
+            if ui.button("Pass input").clicked() {
+                let pass = "o: ~input;".to_owned();
+                state.error = params.submit(pass.clone()).err();
+                if state.error.is_none() {
+                    state.code = pass;
+                }
+            }
+        });
+        buttons_rect = buttons.response.rect;
+        ui.label(if active {
+            format!("Audio running · IN {:.3} · OUT {:.3}", input, output)
+        } else {
+            "No audio callbacks · Start playback / enable Input Echo; check bypass.".into()
+        });
+        ui.label("Tone needs no input. Pass input needs a playing clip or Input Echo.");
+        if let Some(error) = state.error {
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
+        if let Some(error) = params.diagnostics.error() {
+            egui::ScrollArea::vertical()
+                .id_source("errors")
+                .max_height(48.0)
+                .show(ui, |ui| {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                });
+        }
+        ui.separator();
+        // Bound the viewport, not just the number of TextEdit rows.
+        // Keep the buttons/meters fixed while long programs scroll underneath.
+        egui::ScrollArea::vertical()
+            .id_source("code")
+            .max_height(ui.available_height().max(1.0))
+            .auto_shrink([false, false])
+            .always_show_scroll(true)
+            .show(ui, |ui| {
+                code_clip = ui.clip_rect();
+                ui.add(
+                    egui::TextEdit::multiline(&mut state.code)
+                        .code_editor()
+                        .desired_rows(30)
+                        .lock_focus(true)
+                        .desired_width(f32::INFINITY),
+                );
+            });
+    });
+    (buttons_rect, code_clip)
 }
 
 struct EditorHandle {

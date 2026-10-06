@@ -1,6 +1,6 @@
 [package]
 name = "glicol_vst3"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
@@ -11,7 +11,7 @@ name = "glicol_vst"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-nice-plug = { git = "https://github.com/AlexCharlton/nice-plug", rev = "50fed0ebabc3b880015d2a06e9436e4220b548f6", default-features = false, features = ["vst3"] }
+nice-plug = { path = "vendor/nice-plug/crates/nice-plug", default-features = false, features = ["vst3"] }
 baseview = { git = "https://github.com/RustAudio/baseview", rev = "f6e99e9aa6f5aeb6b721cb05e4d882a51d995909" }
 egui-baseview = { git = "https://github.com/BillyDM/egui-baseview", rev = "b7436c02309347e49ffd4491bf31cdef6e759eb7" }
 egui = "0.15"
@@ -33,3 +33,10 @@ codegen-units = 1
 panic = "abort"
 
 [workspace]
+exclude = [
+    "vendor/nice-plug",
+    "vendor/nice-plug/crates/nice-plug",
+    "vendor/nice-plug/crates/nice-plug-core",
+    "vendor/nice-plug/crates/nice-plug-derive",
+    "vendor/nice-plug/crates/nice-log",
+]
