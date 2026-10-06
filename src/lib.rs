@@ -3,10 +3,15 @@ mod audio;
 mod block_adapter;
 mod diagnostics;
 mod editor;
+mod program_files;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod view_lifecycle_tests;
+#[cfg(all(test, windows))]
+mod windows_backend_tests;
+#[cfg(windows)]
+mod windows_files;
 #[cfg(windows)]
 mod windows_focus;
 

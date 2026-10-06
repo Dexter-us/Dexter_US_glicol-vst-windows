@@ -4,6 +4,7 @@ use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 use nice_plug::prelude::{Editor, GuiContext, ParentWindowHandle};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::any::Any;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -39,6 +40,11 @@ impl Editor for GlicolEditor {
         _context: Arc<dyn GuiContext>,
     ) -> Box<dyn Any + Send> {
         let state = self.state.clone();
+        let window_state = state.clone();
+        #[cfg(windows)]
+        let native = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        #[cfg(windows)]
+        let file_owner = native.clone();
         let refresh = self.refresh.clone();
         let (width, height) = self.size();
         let settings = Settings {
@@ -56,18 +62,39 @@ impl Editor for GlicolEditor {
             self.params.clone(),
             |_: &egui::CtxRef, _: &mut Queue, _: &mut Arc<GlicolParams>| {},
             move |ctx: &egui::CtxRef, _: &mut Queue, params: &mut Arc<GlicolParams>| {
-                let mut state = state.lock().expect("Editor state mutex poisoned");
+                let mut state = window_state.lock().expect("Editor state mutex poisoned");
                 if refresh.swap(false, Ordering::AcqRel) {
                     state.code = params.code.lock().expect("Program mutex poisoned").clone();
                     state.error = None;
                 }
                 draw_editor(ctx, params, &mut state);
+                if let Some(action) = state.file_request.take() {
+                    #[cfg(windows)]
+                    match crate::windows_files::post_request(
+                        file_owner.load(Ordering::Acquire) as _,
+                        action,
+                    ) {
+                        Ok(()) => state.file_busy = true,
+                        Err(error) => state.file_status = Some(error),
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let _ = action;
+                        state.file_status =
+                            Some("Disk file dialogs are available in the Windows build.".into());
+                    }
+                }
             },
         );
         #[cfg(windows)]
-        if let Err(error) = crate::windows_focus::install(&window) {
-            window.close();
-            panic!("Cannot open a usable editor: {error}");
+        {
+            if let Err(error) = crate::windows_focus::install(&window, state) {
+                window.close();
+                panic!("Cannot open a usable editor: {error}");
+            }
+            if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
+                native.store(handle.hwnd as usize, Ordering::Release);
+            }
         }
         self.open.store(true, Ordering::Release);
         Box::new(EditorHandle {
@@ -135,6 +162,15 @@ pub(crate) struct EditorState {
     previous_code: Option<String>,
     samples_seen: u64,
     last_audio: Instant,
+    pub(crate) file_request: Option<crate::program_files::FileAction>,
+    pub(crate) file_busy: bool,
+    pub(crate) file_status: Option<String>,
+    pub(crate) file_path: Option<PathBuf>,
+    pub(crate) file_snapshot: Option<String>,
+    #[cfg(test)]
+    pub save_rect: egui::Rect,
+    #[cfg(test)]
+    pub load_rect: egui::Rect,
 }
 
 impl EditorState {
@@ -147,7 +183,27 @@ impl EditorState {
             previous_code: None,
             samples_seen: 0,
             last_audio: Instant::now(),
+            file_request: None,
+            file_busy: false,
+            file_status: None,
+            file_path: None,
+            file_snapshot: None,
+            #[cfg(test)]
+            save_rect: egui::Rect::NOTHING,
+            #[cfg(test)]
+            load_rect: egui::Rect::NOTHING,
         }
+    }
+
+    pub(crate) fn apply_file(&mut self, path: PathBuf, text: String) {
+        if self.previous_code.is_none() {
+            self.previous_code = Some(self.code.clone());
+        }
+        self.code = text.clone();
+        self.file_snapshot = Some(text);
+        self.file_path = Some(path.clone());
+        self.error = None;
+        self.file_status = Some(format!("Loaded {} — click Run to apply.", path.display()));
     }
 }
 
@@ -168,11 +224,28 @@ pub(crate) fn draw_editor(
     let mut buttons_rect = egui::Rect::NOTHING;
     let mut code_clip = egui::Rect::NOTHING;
     egui::CentralPanel::default().show(ctx, |ui| {
+        ui.set_enabled(!state.file_busy);
         ui.label(format!(
             "Glicol VST · VST3 {} · 128-sample latency",
             env!("CARGO_PKG_VERSION")
         ));
         let buttons = ui.horizontal_wrapped(|ui| {
+            let save = ui.button("Save text");
+            #[cfg(test)]
+            {
+                state.save_rect = save.rect;
+            }
+            if save.clicked() {
+                state.file_request = Some(crate::program_files::FileAction::Save);
+            }
+            let load = ui.button("Load text");
+            #[cfg(test)]
+            {
+                state.load_rect = load.rect;
+            }
+            if load.clicked() {
+                state.file_request = Some(crate::program_files::FileAction::Load);
+            }
             if ui.button("Run").clicked() {
                 state.error = params.submit(state.code.clone()).err();
             }
@@ -215,6 +288,14 @@ pub(crate) fn draw_editor(
             "No audio callbacks · Start playback / enable Input Echo; check bypass.".into()
         });
         ui.label("Tone needs no input. Pass input needs a playing clip or Input Echo.");
+        if let Some(status) = &state.file_status {
+            egui::ScrollArea::vertical()
+                .id_source("file-status")
+                .max_height(36.0)
+                .show(ui, |ui| {
+                    ui.label(status);
+                });
+        }
         if let Some(error) = state.error {
             ui.colored_label(egui::Color32::LIGHT_RED, error);
         }

@@ -531,3 +531,63 @@ fn prose_tone_label_reproduces_error_and_standalone_programs_fix_it() {
         .iter()
         .all(|v| (*v - 0.25).abs() < 0.00001));
 }
+
+#[test]
+fn save_and_load_buttons_queue_actions_without_submitting_audio() {
+    use crate::program_files::FileAction;
+    let plugin = GlicolVst3::default();
+    for action in [FileAction::Save, FileAction::Load] {
+        let mut ctx = egui::CtxRef::default();
+        let mut state = editor::EditorState::new(&plugin.params);
+        state.code = "o: speed 2.0 >> seq  55 60 _90 _ 48__90 >> mul 0.8".into();
+        let mut button = egui::Pos2::ZERO;
+        for frame in 0..3 {
+            let events = if frame == 0 {
+                vec![]
+            } else {
+                vec![
+                    egui::Event::PointerMoved(button),
+                    egui::Event::PointerButton {
+                        pos: button,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 1,
+                        modifiers: Default::default(),
+                    },
+                ]
+            };
+            ctx.begin_frame(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(560.0, 420.0),
+                )),
+                time: Some(frame as f64 / 60.0),
+                events,
+                ..Default::default()
+            });
+            editor::draw_editor(&ctx, &plugin.params, &mut state);
+            button = match action {
+                FileAction::Save => state.save_rect.center(),
+                FileAction::Load => state.load_rect.center(),
+            };
+            let _ = ctx.end_frame();
+        }
+        assert_eq!(state.file_request, Some(action));
+        assert_eq!(*plugin.params.code.lock().unwrap(), DEFAULT_CODE);
+    }
+}
+
+#[test]
+fn loaded_text_stays_a_draft_until_run_and_keeps_restore_text() {
+    let plugin = GlicolVst3::default();
+    let mut state = editor::EditorState::new(&plugin.params);
+    let text = "o: speed 2.0 >> seq  55 60 _90 _ 48__90 >> mul 0.8";
+    state.apply_file("program.txt".into(), text.into());
+    assert_eq!(state.code, text);
+    assert_eq!(state.file_snapshot.as_deref(), Some(text));
+    assert_eq!(
+        state.file_path.as_deref(),
+        Some(std::path::Path::new("program.txt"))
+    );
+    assert!(state.file_status.as_deref().unwrap().contains("click Run"));
+    assert_eq!(*plugin.params.code.lock().unwrap(), DEFAULT_CODE);
+}

@@ -123,7 +123,6 @@ dependencies = [
 [[package]]
 name = "baseview"
 version = "0.1.0"
-source = "git+https://github.com/RustAudio/baseview?rev=f6e99e9aa6f5aeb6b721cb05e4d882a51d995909#f6e99e9aa6f5aeb6b721cb05e4d882a51d995909"
 dependencies = [
  "cocoa",
  "core-foundation",
@@ -712,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "glicol_vst3"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "baseview",
  "egui",

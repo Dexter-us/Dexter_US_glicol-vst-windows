@@ -67,7 +67,7 @@ still required:
 
 1. Insert the **VST3 audio effect**. Click in the text editor and type, delete,
    use arrow keys and Tab, and paste with Ctrl+V. Seeing a cursor is not enough.
-2. Confirm **VST3 0.1.3** is shown in the editor header, so Cakewalk isn't still
+2. Confirm **VST3 0.1.4** is shown in the editor header, so Cakewalk isn't still
    loading the old module. The window is now 560 × 420 logical pixels and capped
    at 600 physical pixels high when the host requests DPI scaling. Run, meters,
    and audition controls stay above the code area. The scrollbar appears only
@@ -115,7 +115,7 @@ still required:
   plugin. Check track/master mute, faders, output routing, audio device, and
   monitoring. Confirm the track isn't routed to an unused hardware output.
 - **Audio running; OUT zero with Test tone:** look for the visible **Glicol error**
-  message and confirm you loaded version 0.1.3. Report the message plus the
+  message and confirm you loaded version 0.1.4. Report the message plus the
   IN/OUT values and whether transport is running.
 
 Run applies on the next engine block instead of waiting for a musical bar.
@@ -154,6 +154,43 @@ closing it. Compare against reopening, and verify code, buttons and mouse clicks
 are aligned at the current Windows display scale. Also try reopening a saved
 project. If the first view is still displaced, provide first-open and reopened
 screenshots, display scaling, and whether the window is on the primary monitor.
+
+### VSTHost first-load follow-up
+
+The user confirmed that 0.1.3 still opens displaced on the first load in
+VSTHost. Its scaling-order patch is **not** a confirmed fix for that symptom.
+Version 0.1.4 removes a separate host-wide side effect in the pinned baseview
+backend: an embedded window no longer calls `SetProcessDpiAwarenessContext`
+after creating its HWND and renderer. A plugin must inherit its host's display
+policy, not alter the whole process on its first opening.
+
+Completely exit VSTHost/Cakewalk before installing and start a fresh host
+process afterward. Merely closing/reopening the editor cannot reset process
+DPI policy already changed by an older loaded DLL. Check the very first editor
+opening in the new process; actual OpenGL positioning still requires host
+confirmation. The native tests check real Win32 child origin, size and unchanged
+DPI context on opening/reopening, but do not render the actual OpenGL editor.
+
+## Save and load plain text programs
+
+- **Save text** opens a Windows Save As dialog and writes the current editor
+  contents, including an unsubmitted draft, as UTF-8 text. The default extension
+  is `.txt`; `.glicol` and other explicitly chosen extensions also work.
+- **Load text** opens a Windows file chooser. If current text has not been saved
+  to disk or differs from the last loaded/saved text, choose Save first, replace
+  without saving, or Cancel. Cancellation and read errors leave current text
+  unchanged.
+- Loading fills the editor only. Click **Run** to apply the loaded program.
+  Loading/saving does not change the audio program by itself.
+- Save asks before overwriting an existing file. It stages the complete write
+  in the destination folder and atomically replaces the file; a failed save
+  does not truncate the old program. Errors and success are shown in the editor.
+- Unicode filenames, spaces and CRLF line endings are preserved. UTF-8 BOM
+  input is accepted. UTF-16/binary files are rejected explicitly; resave those
+  as UTF-8 in a text editor. The maximum program file size is 1 MiB.
+- File dialogs run outside the borrowed rendering callback, so their nested
+  Windows message loop can repaint safely. No disk I/O runs in the audio
+  callback and the host's current working directory is not changed.
 
 ## Scope and licensing
 

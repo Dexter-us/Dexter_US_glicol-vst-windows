@@ -1,8 +1,11 @@
 //! Backport click-to-focus behavior without changing the pinned GUI backend.
 //! The old baseview child window calls SetCapture, but not SetFocus.
 
+use crate::editor::EditorState;
+use crate::program_files::FileAction;
 use baseview::WindowHandle;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+use std::sync::{Arc, Mutex};
 use winapi::shared::basetsd::{DWORD_PTR, UINT_PTR};
 use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
 use winapi::shared::windef::HWND;
@@ -14,18 +17,26 @@ use winapi::um::winuser::{
 
 const SUBCLASS_ID: UINT_PTR = 0x474C4943;
 
-pub fn install(handle: &WindowHandle) -> Result<(), String> {
+pub fn install(handle: &WindowHandle, state: Arc<Mutex<EditorState>>) -> Result<(), String> {
     let hwnd = match handle.raw_window_handle() {
         RawWindowHandle::Windows(handle) => handle.hwnd as HWND,
         _ => return Err("Editor did not return a Windows window handle".to_owned()),
     };
-    install_hwnd(hwnd)
+    install_hwnd(hwnd, Some(state))
 }
 
-fn install_hwnd(hwnd: HWND) -> Result<(), String> {
+fn install_hwnd(hwnd: HWND, state: Option<Arc<Mutex<EditorState>>>) -> Result<(), String> {
     // baseview creates its parented child synchronously on the calling UI thread.
     // SetWindowSubclass chains safely with the host and baseview window procedures.
-    if unsafe { SetWindowSubclass(hwnd, Some(focus_proc), SUBCLASS_ID, 0) } == 0 {
+    let reference = state
+        .map(|state| Box::into_raw(Box::new(state)) as DWORD_PTR)
+        .unwrap_or(0);
+    if unsafe { SetWindowSubclass(hwnd, Some(focus_proc), SUBCLASS_ID, reference) } == 0 {
+        if reference != 0 {
+            unsafe {
+                drop(Box::from_raw(reference as *mut Arc<Mutex<EditorState>>));
+            }
+        }
         return Err(format!(
             "Could not install editor focus handler: {}",
             std::io::Error::last_os_error()
@@ -39,7 +50,8 @@ mod tests {
     use super::*;
     use std::ptr::null_mut;
     use winapi::um::winuser::{
-        CreateWindowExW, DestroyWindow, GetFocus, SendMessageW, WS_CHILD, WS_OVERLAPPEDWINDOW,
+        CreateWindowExW, DestroyWindow, GetFocus, PeekMessageW, SendMessageW, MSG, PM_REMOVE,
+        WS_CHILD, WS_OVERLAPPEDWINDOW,
     };
 
     struct TestWindows(HWND);
@@ -87,7 +99,7 @@ mod tests {
             );
             assert!(!child.is_null(), "Could not create test child");
             let before = SendMessageW(child, WM_GETDLGCODE, 0, 0);
-            install_hwnd(child).unwrap();
+            install_hwnd(child, None).unwrap();
             SetFocus(parent);
             SendMessageW(child, WM_LBUTTONDOWN, 0, 0);
             assert_eq!(GetFocus(), child);
@@ -96,6 +108,20 @@ mod tests {
                 (DLGC_WANTALLKEYS | DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTTAB) as LRESULT;
             assert_eq!(flags & expected, expected);
             assert_eq!(flags & before, before);
+            // The modal chooser must be posted, not run inside an egui frame.
+            crate::windows_files::post_request(child, FileAction::Save).unwrap();
+            let mut message: MSG = std::mem::zeroed();
+            assert_ne!(
+                PeekMessageW(
+                    &mut message,
+                    child,
+                    crate::windows_files::FILE_MESSAGE,
+                    crate::windows_files::FILE_MESSAGE,
+                    PM_REMOVE
+                ),
+                0
+            );
+            assert_eq!(message.wParam, 1);
             // The Drop guard destroys both windows and exercises subclass cleanup.
         }
     }
@@ -107,9 +133,25 @@ unsafe extern "system" fn focus_proc(
     wparam: WPARAM,
     lparam: LPARAM,
     _subclass_id: UINT_PTR,
-    _reference_data: DWORD_PTR,
+    reference_data: DWORD_PTR,
 ) -> LRESULT {
     match message {
+        crate::windows_files::FILE_MESSAGE => {
+            if reference_data != 0 {
+                // Clone before entering a modal loop: the host may destroy the
+                // child (and its boxed subclass data) while that loop is active.
+                let state = (*(reference_data as *const Arc<Mutex<EditorState>>)).clone();
+                let action = match wparam {
+                    1 => Some(FileAction::Save),
+                    2 => Some(FileAction::Load),
+                    _ => None,
+                };
+                if let Some(action) = action {
+                    crate::windows_files::handle_request(hwnd, state, action);
+                }
+            }
+            return 0;
+        }
         WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN | WM_XBUTTONDOWN => {
             // Focus only after a deliberate click, never every repaint. This
             // allows the host to regain focus when the user clicks elsewhere.
@@ -122,6 +164,11 @@ unsafe extern "system" fn focus_proc(
         }
         WM_NCDESTROY => {
             RemoveWindowSubclass(hwnd, Some(focus_proc), SUBCLASS_ID);
+            if reference_data != 0 {
+                drop(Box::from_raw(
+                    reference_data as *mut Arc<Mutex<EditorState>>,
+                ));
+            }
         }
         _ => {}
     }

@@ -1,6 +1,6 @@
 [package]
 name = "glicol_vst3"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
@@ -21,7 +21,7 @@ rtrb = "0.2"
 log = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["commctrl", "winuser"] }
+winapi = { version = "0.3", features = ["commctrl", "winuser", "commdlg", "winbase"] }
 
 [dev-dependencies]
 vst3 = "0.3"
@@ -40,3 +40,6 @@ exclude = [
     "vendor/nice-plug/crates/nice-plug-derive",
     "vendor/nice-plug/crates/nice-log",
 ]
+
+[patch."https://github.com/RustAudio/baseview"]
+baseview = { path = "vendor/baseview" }
