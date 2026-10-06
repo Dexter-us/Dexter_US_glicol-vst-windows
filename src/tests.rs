@@ -384,3 +384,150 @@ fn editor_controls_and_scroll_clip_fit_short_windows() {
         assert!(code_clip.height() > 20.0, "{code_clip:?}");
     }
 }
+
+#[test]
+fn default_program_must_not_report_a_syntax_error() {
+    let mut plugin = GlicolVst3::default();
+    run_buffer(&mut plugin.audio, [vec![0.5; 512], vec![0.5; 512]]);
+    assert!(
+        plugin.params.diagnostics.error().is_none(),
+        "{:?}",
+        plugin.params.diagnostics.error()
+    );
+}
+
+#[test]
+fn code_scroll_wheel_actually_moves_long_text() {
+    let plugin = GlicolVst3::default();
+    let mut ctx = egui::CtxRef::default();
+    let mut state = editor::EditorState::new(&plugin.params);
+    state.code = "o: sin 440 >> mul 0.05;\n".repeat(200);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(560.0, 420.0));
+    let mut viewport = screen;
+    for frame in 0..3 {
+        ctx.begin_frame(egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(frame as f64 / 60.0),
+            events: if frame == 1 {
+                vec![egui::Event::PointerMoved(viewport.center())]
+            } else {
+                vec![]
+            },
+            scroll_delta: if frame == 1 {
+                egui::vec2(0.0, -150.0)
+            } else {
+                egui::Vec2::ZERO
+            },
+            ..Default::default()
+        });
+        let (_, clip) = editor::draw_editor(&ctx, &plugin.params, &mut state);
+        viewport = clip;
+        let _ = ctx.end_frame();
+        if frame == 0 {
+            assert!((state.code_rect.top() - viewport.top()).abs() < 5.0);
+        } else if frame == 2 {
+            assert!(
+                state.code_rect.top() < viewport.top() - 100.0,
+                "text top {}, viewport top {}",
+                state.code_rect.top(),
+                viewport.top()
+            );
+        }
+    }
+}
+
+#[test]
+fn dragging_code_scrollbar_actually_moves_long_text() {
+    let plugin = GlicolVst3::default();
+    let mut ctx = egui::CtxRef::default();
+    let mut state = editor::EditorState::new(&plugin.params);
+    state.code = "o: sin 440 >> mul 0.05;\n".repeat(200);
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(560.0, 420.0));
+    let mut viewport = screen;
+    for frame in 0..5 {
+        let top = egui::pos2(screen.right() - 14.0, viewport.top() + 10.0);
+        let bottom = egui::pos2(top.x, viewport.center().y);
+        let events = match frame {
+            1 => vec![
+                egui::Event::PointerMoved(top),
+                egui::Event::PointerButton {
+                    pos: top,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ],
+            2 => vec![egui::Event::PointerMoved(bottom)],
+            3 => vec![egui::Event::PointerButton {
+                pos: bottom,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+            _ => vec![],
+        };
+        ctx.begin_frame(egui::RawInput {
+            // Allow the auto-show scrollbar's animation to finish before dragging.
+            screen_rect: Some(screen),
+            time: Some(frame as f64),
+            events,
+            ..Default::default()
+        });
+        let (_, clip) = editor::draw_editor(&ctx, &plugin.params, &mut state);
+        viewport = clip;
+        let _ = ctx.end_frame();
+        if frame == 4 {
+            assert!(
+                state.code_rect.top() < viewport.top() - 100.0,
+                "text {:?}, viewport {:?}",
+                state.code_rect,
+                viewport
+            );
+        }
+    }
+}
+
+#[test]
+fn short_program_does_not_create_empty_scroll_overflow() {
+    let plugin = GlicolVst3::default();
+    let mut ctx = egui::CtxRef::default();
+    let mut state = editor::EditorState::new(&plugin.params);
+    ctx.begin_frame(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(560.0, 420.0),
+        )),
+        ..Default::default()
+    });
+    let (_, clip) = editor::draw_editor(&ctx, &plugin.params, &mut state);
+    let _ = ctx.end_frame();
+    assert!(
+        state.code_rect.bottom() <= clip.bottom(),
+        "Short programs must not reserve a tall blank scrollable area"
+    );
+}
+
+#[test]
+fn prose_tone_label_reproduces_error_and_standalone_programs_fix_it() {
+    let mut plugin = GlicolVst3::default();
+    plugin
+        .params
+        .submit("o: ~input >> mul 0.1;\n\n Tone test: o: sin 440 >> mul 0.1;".into())
+        .unwrap();
+    run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    let error = plugin.params.diagnostics.error().unwrap();
+    assert!(
+        error.contains("line[3]") && error.contains("col[2]"),
+        "{error}"
+    );
+    plugin.params.submit(TEST_TONE.into()).unwrap();
+    let output = run_buffer(&mut plugin.audio, [vec![0.0; 512], vec![0.0; 512]]);
+    assert!(plugin.params.diagnostics.error().is_none());
+    assert!(output[0].iter().any(|v| v.abs() > 0.04));
+    plugin.params.submit("o: ~input;".into()).unwrap();
+    let output = run_buffer(&mut plugin.audio, [vec![0.25; 512], vec![0.25; 512]]);
+    assert!(plugin.params.diagnostics.error().is_none());
+    assert!(output[0][BLOCK_SIZE..]
+        .iter()
+        .all(|v| (*v - 0.25).abs() < 0.00001));
+}

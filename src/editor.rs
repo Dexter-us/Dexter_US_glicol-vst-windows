@@ -41,7 +41,7 @@ impl Editor for GlicolEditor {
         let (width, height) = self.size();
         let settings = Settings {
             window: WindowOpenOptions {
-                title: "Glicol VST — VST3 0.1.1".into(),
+                title: format!("Glicol VST — VST3 {}", env!("CARGO_PKG_VERSION")),
                 size: Size::new(width as f64, height as f64),
                 scale: WindowScalePolicy::ScaleFactor(*self.scale.lock().unwrap()),
             },
@@ -101,6 +101,8 @@ impl Editor for GlicolEditor {
 
 pub(crate) struct EditorState {
     pub code: String,
+    #[cfg(test)]
+    pub code_rect: egui::Rect,
     error: Option<&'static str>,
     previous_code: Option<String>,
     samples_seen: u64,
@@ -111,6 +113,8 @@ impl EditorState {
     pub fn new(params: &GlicolParams) -> Self {
         Self {
             code: params.code.lock().unwrap().clone(),
+            #[cfg(test)]
+            code_rect: egui::Rect::NOTHING,
             error: None,
             previous_code: None,
             samples_seen: 0,
@@ -136,7 +140,10 @@ pub(crate) fn draw_editor(
     let mut buttons_rect = egui::Rect::NOTHING;
     let mut code_clip = egui::Rect::NOTHING;
     egui::CentralPanel::default().show(ctx, |ui| {
-        ui.label("Glicol VST · VST3 0.1.1 · 128-sample latency");
+        ui.label(format!(
+            "Glicol VST · VST3 {} · 128-sample latency",
+            env!("CARGO_PKG_VERSION")
+        ));
         let buttons = ui.horizontal_wrapped(|ui| {
             if ui.button("Run").clicked() {
                 state.error = params.submit(state.code.clone()).err();
@@ -198,16 +205,22 @@ pub(crate) fn draw_editor(
             .id_source("code")
             .max_height(ui.available_height().max(1.0))
             .auto_shrink([false, false])
-            .always_show_scroll(true)
+            .always_show_scroll(false)
             .show(ui, |ui| {
                 code_clip = ui.clip_rect();
-                ui.add(
+                let response = ui.add(
                     egui::TextEdit::multiline(&mut state.code)
                         .code_editor()
-                        .desired_rows(30)
+                        .desired_rows(4)
                         .lock_focus(true)
                         .desired_width(f32::INFINITY),
                 );
+                #[cfg(test)]
+                {
+                    state.code_rect = response.rect;
+                }
+                #[cfg(not(test))]
+                let _ = response;
             });
     });
     (buttons_rect, code_clip)

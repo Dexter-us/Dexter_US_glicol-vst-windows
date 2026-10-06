@@ -6,7 +6,7 @@ A separate MIT-licensed VST3 port of the Glicol stereo code-based audio effect.
 - Manufacturer: **Dexter U.S.**
 - Format: **VST3**, 64-bit Windows, mono/stereo audio effect, no MIDI
 - Latency: **128 samples**, declared to the host
-- UI: compact, DPI-height-capped window with a visibly scrollable code editor
+- UI: compact, DPI-height-capped window; scrollbars appear when code overflows
 - Audio checks: **Test tone**, **Mute**, **Restore code**, **Pass input**, IN/OUT meters,
   callback activity, and visible engine errors
 - Host compatibility: mono negotiation, immediate Run, generator keep-alive,

@@ -67,10 +67,13 @@ still required:
 
 1. Insert the **VST3 audio effect**. Click in the text editor and type, delete,
    use arrow keys and Tab, and paste with Ctrl+V. Seeing a cursor is not enough.
-2. Confirm **VST3 0.1.1** is shown in the editor header, so Cakewalk isn't still
+2. Confirm **VST3 0.1.2** is shown in the editor header, so Cakewalk isn't still
    loading the old module. The window is now 560 × 420 logical pixels and capped
    at 600 physical pixels high when the host requests DPI scaling. Run, meters,
-   and audition controls stay above the code area, which has a visible scrollbar.
+   and audition controls stay above the code area. The scrollbar appears only
+   when the actual code extends beyond the viewport; short programs do not reserve
+   a large blank scrolling area. Long programs can be scrolled by dragging the
+   scrollbar or using the mouse wheel while the pointer is over the editor.
 3. Turn down monitoring, start playback, unbypass the effect, and click **Test tone**.
    It automatically submits:
 
@@ -112,7 +115,7 @@ still required:
   plugin. Check track/master mute, faders, output routing, audio device, and
   monitoring. Confirm the track isn't routed to an unused hardware output.
 - **Audio running; OUT zero with Test tone:** look for the visible **Glicol error**
-  message and confirm you loaded version 0.1.1. Report the message plus the
+  message and confirm you loaded version 0.1.2. Report the message plus the
   IN/OUT values and whether transport is running.
 
 Run applies on the next engine block instead of waiting for a musical bar.
@@ -124,6 +127,15 @@ the host still controls transport and audio processing.
 When upgrading, close Cakewalk, back up the old VST3 bundle **outside** scanned
 folders, replace the whole installed VST3 directory, rescan, and reopen. The
 class ID is unchanged so projects can still identify the same VST3 plugin.
+
+## Enter code, not example labels
+
+`Tone test:` is explanatory text, not a Glicol statement. A program such as
+`o: ~input >> mul 0.1;` followed by `Tone test: o: sin 440 >> mul 0.1;`
+causes a syntax error on the label's line. Replace the complete editor contents
+with one of the valid code examples above, then click Run. Do not paste Markdown
+backticks or labels into the editor. The default program now contains code only;
+the Test tone control supplies the oscillator without requiring a pasted label.
 
 ## Scope and licensing
 

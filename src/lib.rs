@@ -14,7 +14,7 @@ use nice_plug::prelude::*;
 use rtrb::{Producer, RingBuffer};
 use std::sync::{Arc, Mutex};
 
-pub const DEFAULT_CODE: &str = "o: ~input >> mul 0.1;\n\n// Tone test: o: sin 440 >> mul 0.1;";
+pub const DEFAULT_CODE: &str = "o: ~input >> mul 0.1;";
 pub const TEST_TONE: &str = "o: sin 440 >> mul 0.05;";
 const QUEUE_CAPACITY: usize = 4;
 
