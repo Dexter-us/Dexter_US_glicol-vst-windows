@@ -165,6 +165,8 @@ pub(crate) struct WrapperView<P: Vst3Plugin> {
     inner: Arc<WrapperInner<P>>,
     editor: Arc<Mutex<Box<dyn Editor>>>,
     editor_handle: RwLock<Option<Box<dyn Any>>>,
+    /// Needed to recreate a fixed-scale Windows child when DPI arrives after attach.
+    attached_parent: RwLock<Option<ParentWindowHandle>>,
 
     /// The `IPlugFrame` instance passed by the host during [`IPlugViewTrait::setFrame()`].
     plug_frame: RwLock<Option<VstPtr<IPlugFrame>>>,
@@ -230,6 +232,7 @@ impl<P: Vst3Plugin> WrapperView<P> {
             inner,
             editor,
             editor_handle: RwLock::new(None),
+            attached_parent: RwLock::new(None),
             plug_frame: RwLock::new(None),
             run_loop_event_handler: RunLoopEventHandlerWrapper::new(),
             scaling_factor: AtomicF32::new(1.0),
@@ -485,6 +488,7 @@ impl<P: Vst3Plugin> IPlugViewTrait for WrapperView<P> {
                     .spawn(parent_handle, self.inner.clone().make_gui_context()),
             );
             *self.inner.plug_view.write() = self.com_self.read().clone();
+            *self.attached_parent.write() = Some(parent_handle);
 
             kResultOk
         } else {
@@ -501,6 +505,7 @@ impl<P: Vst3Plugin> IPlugViewTrait for WrapperView<P> {
         if editor_handle.is_some() {
             *self.inner.plug_view.write() = None;
             *editor_handle = None;
+            *self.attached_parent.write() = None;
 
             kResultOk
         } else {
@@ -632,12 +637,60 @@ impl<P: Vst3Plugin> IPlugViewContentScaleSupportTrait for WrapperView<P> {
             return kResultFalse;
         }
 
-        if self.editor.lock().set_scale_factor(factor) {
-            self.scaling_factor.store(factor, Ordering::Relaxed);
-            kResultOk
-        } else {
-            kResultFalse
+        if !factor.is_finite() || factor <= 0.0 {
+            return kInvalidArgument;
         }
+        // Lock ordering matches attached(): handle, then editor. All native window
+        // changes run on the host's GUI thread, never the audio callback.
+        let mut handle = self.editor_handle.write();
+        let mut editor = self.editor.lock();
+        let mut accepted = editor.set_scale_factor(factor);
+        // Ask the editor too: a new IPlugView starts at 1.0 while the editor
+        // may retain a different scale from an earlier view of this instance.
+        if accepted && handle.is_some() && self.scaling_factor.load(Ordering::Relaxed) == factor {
+            return kResultOk;
+        }
+        if !accepted && handle.is_some() {
+            let parent = *self.attached_parent.read();
+            if let Some(parent @ ParentWindowHandle::Win32Hwnd(_)) = parent {
+                // The legacy GUI backend has a fixed scale per window. A late
+                // host DPI request must recreate its child, not leave the host
+                // and renderer disagreeing until the user closes/reopens.
+                drop(handle.take());
+                accepted = editor.set_scale_factor(factor);
+                // On rejection recreate at the editor's unchanged previous scale.
+                *handle = Some(editor.spawn(parent, self.inner.clone().make_gui_context()));
+            }
+        }
+        if !accepted {
+            return kResultFalse;
+        }
+        self.scaling_factor.store(factor, Ordering::Relaxed);
+        let attached = handle.is_some();
+        let (width, height) = editor.size();
+        drop(editor);
+        drop(handle);
+        // Hosts can synchronously call onSize/getSize from resizeView. Release
+        // all locks first and retain cloned COM pointers across the callback.
+        if attached {
+            let frame = self.plug_frame.read().as_ref().map(|frame| (**frame).clone());
+            let view = self.com_self.read().clone();
+            if let (Some(frame), Some(view)) = (frame, view) {
+                if let Some(view) = view.as_com_ref::<IPlugView>() {
+                    let mut rect = ViewRect {
+                        left: 0,
+                        top: 0,
+                        right: (width as f32 * factor).round() as i32,
+                        bottom: (height as f32 * factor).round() as i32,
+                    };
+                    let result = unsafe { frame.resizeView(view.as_ptr(), &mut rect) };
+                    if result != kResultOk {
+                        return result;
+                    }
+                }
+            }
+        }
+        kResultOk
     }
 }
 

@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "glicol_vst3"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "baseview",
  "egui",

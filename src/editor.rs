@@ -17,11 +17,13 @@ pub struct GlicolEditor {
     scale: Mutex<f64>,
     open: Arc<AtomicBool>,
     refresh: Arc<AtomicBool>,
+    state: Arc<Mutex<EditorState>>,
 }
 
 impl GlicolEditor {
     pub fn new(params: Arc<GlicolParams>) -> Self {
         Self {
+            state: Arc::new(Mutex::new(EditorState::new(&params))),
             params,
             scale: Mutex::new(1.0),
             open: Arc::new(AtomicBool::new(false)),
@@ -36,7 +38,7 @@ impl Editor for GlicolEditor {
         parent: ParentWindowHandle,
         _context: Arc<dyn GuiContext>,
     ) -> Box<dyn Any + Send> {
-        let mut state = EditorState::new(&self.params);
+        let state = self.state.clone();
         let refresh = self.refresh.clone();
         let (width, height) = self.size();
         let settings = Settings {
@@ -54,6 +56,7 @@ impl Editor for GlicolEditor {
             self.params.clone(),
             |_: &egui::CtxRef, _: &mut Queue, _: &mut Arc<GlicolParams>| {},
             move |ctx: &egui::CtxRef, _: &mut Queue, params: &mut Arc<GlicolParams>| {
+                let mut state = state.lock().expect("Editor state mutex poisoned");
                 if refresh.swap(false, Ordering::AcqRel) {
                     state.code = params.code.lock().expect("Program mutex poisoned").clone();
                     state.error = None;
@@ -82,13 +85,14 @@ impl Editor for GlicolEditor {
     }
 
     fn set_scale_factor(&self, factor: f32) -> bool {
-        if !factor.is_finite()
-            || !(0.5..=3.0).contains(&factor)
-            || self.open.load(Ordering::Acquire)
-        {
+        if !factor.is_finite() || !(0.5..=3.0).contains(&factor) {
             return false;
         }
-        *self.scale.lock().unwrap() = factor as f64;
+        let mut scale = self.scale.lock().unwrap();
+        if self.open.load(Ordering::Acquire) {
+            return *scale == factor as f64;
+        }
+        *scale = factor as f64;
         true
     }
 
@@ -96,6 +100,30 @@ impl Editor for GlicolEditor {
     fn param_modulation_changed(&self, _id: &str, _offset: f32) {}
     fn param_values_changed(&self) {
         self.refresh.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn draft_and_restore_program_survive_scale_recreation() {
+        let plugin = crate::GlicolVst3::default();
+        let editor = GlicolEditor::new(plugin.params.clone());
+        let draft = "o: speed 2.0 >> seq  55 60 _90 _ 48__90 >> mul 0.8";
+        {
+            let mut state = editor.state.lock().unwrap();
+            state.code = draft.into();
+            state.previous_code = Some("unsent restore draft".into());
+        }
+        for scale in [1.5, 2.0, 1.0] {
+            assert!(editor.set_scale_factor(scale));
+            let state = editor.state.lock().unwrap();
+            assert_eq!(state.code, draft);
+            assert_eq!(state.previous_code.as_deref(), Some("unsent restore draft"));
+        }
+        assert_eq!(*plugin.params.code.lock().unwrap(), crate::DEFAULT_CODE);
     }
 }
 

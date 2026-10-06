@@ -67,7 +67,7 @@ still required:
 
 1. Insert the **VST3 audio effect**. Click in the text editor and type, delete,
    use arrow keys and Tab, and paste with Ctrl+V. Seeing a cursor is not enough.
-2. Confirm **VST3 0.1.2** is shown in the editor header, so Cakewalk isn't still
+2. Confirm **VST3 0.1.3** is shown in the editor header, so Cakewalk isn't still
    loading the old module. The window is now 560 × 420 logical pixels and capped
    at 600 physical pixels high when the host requests DPI scaling. Run, meters,
    and audition controls stay above the code area. The scrollbar appears only
@@ -115,7 +115,7 @@ still required:
   plugin. Check track/master mute, faders, output routing, audio device, and
   monitoring. Confirm the track isn't routed to an unused hardware output.
 - **Audio running; OUT zero with Test tone:** look for the visible **Glicol error**
-  message and confirm you loaded version 0.1.2. Report the message plus the
+  message and confirm you loaded version 0.1.3. Report the message plus the
   IN/OUT values and whether transport is running.
 
 Run applies on the next engine block instead of waiting for a musical bar.
@@ -136,6 +136,24 @@ causes a syntax error on the label's line. Replace the complete editor contents
 with one of the valid code examples above, then click Run. Do not paste Markdown
 backticks or labels into the editor. The default program now contains code only;
 the Test tone control supplies the oscillator without requiring a pasted label.
+
+## First-open position and late display scaling
+
+The user reported that the editor initially appears down and to the right, but
+looks correct after closing and reopening. The fixed-scale GUI previously
+rejected a display-scale request made after attaching its window. Version 0.1.3
+handles that ordering by recreating the Windows child at the requested scale
+and requesting the matching physical size from the host, with origin `(0, 0)`.
+Draft text and the Restore code buffer survive the recreation without changing
+the submitted audio program. Repeated identical scale requests do not rebuild.
+
+This is a targeted fix for a confirmed initialization-order limitation; the
+actual Cakewalk displacement has not been reproduced in the native tests.
+For acceptance, insert a fresh instance and check the **first** opening before
+closing it. Compare against reopening, and verify code, buttons and mouse clicks
+are aligned at the current Windows display scale. Also try reopening a saved
+project. If the first view is still displaced, provide first-open and reopened
+screenshots, display scaling, and whether the window is on the primary monitor.
 
 ## Scope and licensing
 

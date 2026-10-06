@@ -5,6 +5,8 @@ mod diagnostics;
 mod editor;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod view_lifecycle_tests;
 #[cfg(windows)]
 mod windows_focus;
 
