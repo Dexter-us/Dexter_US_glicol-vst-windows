@@ -1,2 +1,31 @@
-# glicol-vst-windows-private
-Private MIT-licensed Glicol VST Windows focus/audio patch and x64 MSVC build
+## Introduction
+
+**Windows patch copy:** see [WINDOWS-PATCH.md](WINDOWS-PATCH.md) for the fixes,
+build instructions, latency details, and host acceptance checks.
+
+Glicol should now be able to run on every DAW:
+https://www.youtube.com/watch?v=tmmBhBmIEW0
+
+Modified on top of:
+https://github.com/DGriffin91/egui_baseview_test_vst2
+
+## Todo
+
+- [x] support input, so that you can live coding an effect
+- [ ] work on midi i/o
+- [ ] support ableton link?
+
+## Usage: macOS (Tested on M1; need to test on previous models)
+Run `sudo zsh scripts/macos-build-and-install.sh`
+> For M1 users, run `sudo zsh scripts/m1.sh`
+Start your DAW, test the plugin
+
+## Usage: Windows (Untested)
+Run `cargo build`
+Copy `target/debug/glicol_vst.dll` to your VST plugin folder
+Start your DAW, test the plugin
+
+## Usage: Linux (Untested)
+Run `cargo build`
+Copy `target/debug/glicol_vst.so` to your VST plugin folder
+Start your DAW, test the plugin
