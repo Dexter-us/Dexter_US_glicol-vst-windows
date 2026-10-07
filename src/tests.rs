@@ -54,6 +54,43 @@ fn submitted_tone_owns_text_even_after_editor_closes() {
 }
 
 #[test]
+fn windows_line_endings_are_normalized_before_engine_update() {
+    for line_ending in ["\r\n", "\r"] {
+        let program = format!(
+            "~freq: sin 3 >> mul 30 >> add 220{line_ending}o: sin ~freq >> mul 0.5{line_ending}"
+        );
+
+        let mut submitted = GlicolVst3::default();
+        submitted.params.submit(program.clone()).unwrap();
+        let output = run_buffer(
+            &mut submitted.audio,
+            [vec![0.0; 4096], vec![0.0; 4096]],
+        );
+        assert!(
+            submitted.params.diagnostics.error().is_none(),
+            "submitted {line_ending:?} program: {:?}",
+            submitted.params.diagnostics.error()
+        );
+        let peak = output[0].iter().fold(0.0_f32, |a, v| a.max(v.abs()));
+        assert!(peak > 0.45 && peak <= 0.501, "submitted tone peak: {peak}");
+
+        let mut restored = GlicolVst3::default();
+        restored.audio.configure(48000.0, &program);
+        let output = run_buffer(
+            &mut restored.audio,
+            [vec![0.0; 4096], vec![0.0; 4096]],
+        );
+        assert!(
+            restored.params.diagnostics.error().is_none(),
+            "restored {line_ending:?} program: {:?}",
+            restored.params.diagnostics.error()
+        );
+        let peak = output[0].iter().fold(0.0_f32, |a, v| a.max(v.abs()));
+        assert!(peak > 0.45 && peak <= 0.501, "restored tone peak: {peak}");
+    }
+}
+
+#[test]
 fn sample_rate_applies_to_existing_program() {
     for rate in [44100, 48000] {
         let mut plugin = GlicolVst3::default();

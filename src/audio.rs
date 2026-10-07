@@ -6,6 +6,10 @@ use nice_plug::prelude::Buffer;
 use rtrb::Consumer;
 use std::sync::Arc;
 
+fn normalize_line_endings(code: &str) -> String {
+    code.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 pub struct AudioEngine {
     engine: Engine<BLOCK_SIZE>,
     updates: Consumer<String>,
@@ -37,8 +41,9 @@ impl AudioEngine {
         self.engine = Engine::new();
         self.engine.livecoding = false;
         self.engine.set_sr(sample_rate.round() as usize);
-        self.engine.update_with_code(code);
-        self.current_code = code.into();
+        let code = normalize_line_endings(code);
+        self.engine.update_with_code(&code);
+        self.current_code = code;
         self.diagnostics.clear_error();
         self.reset();
     }
@@ -56,6 +61,7 @@ impl AudioEngine {
         for _ in 0..QUEUE_CAPACITY {
             match self.updates.pop() {
                 Ok(code) => {
+                    let code = normalize_line_endings(&code);
                     if code != self.current_code {
                         self.engine.update_with_code(&code);
                         self.current_code = code;
