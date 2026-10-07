@@ -54,10 +54,10 @@ fn submitted_tone_owns_text_even_after_editor_closes() {
 }
 
 #[test]
-fn windows_line_endings_are_normalized_before_engine_update() {
+fn windows_line_endings_and_trailing_whitespace_are_normalized_before_engine_update() {
     for line_ending in ["\r\n", "\r"] {
         let program = format!(
-            "~freq: sin 3 >> mul 30 >> add 220{line_ending}o: sin ~freq >> mul 0.5{line_ending}"
+            "~freq: sin 3 >> mul 30 >> add 220  {line_ending}o: sin ~freq >> mul 0.5\t{line_ending}  {line_ending}"
         );
 
         let mut submitted = GlicolVst3::default();
@@ -89,7 +89,6 @@ fn windows_line_endings_are_normalized_before_engine_update() {
         assert!(peak > 0.45 && peak <= 0.501, "restored tone peak: {peak}");
     }
 }
-
 #[test]
 fn sample_rate_applies_to_existing_program() {
     for rate in [44100, 48000] {
