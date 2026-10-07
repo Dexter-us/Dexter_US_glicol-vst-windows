@@ -1,7 +1,10 @@
 # Glicol VST — separate Windows VST3 port
 
-This is a **64-bit VST3 audio effect**, not a MIDI instrument.
-Stereo, mono, and mono-input/stereo-output host layouts are supported.
+This is a **64-bit VST3 audio instrument** with stereo, mono, and
+mono-input/stereo-output audio layouts. It advertises the VST3 **Instrument**
+subcategory and does not process MIDI notes. Glicol programs can generate sound
+without MIDI or input audio; the input path remains available for `o: ~input;`
+programs.
 The product remains **Glicol VST**, manufactured by **Dexter U.S.**
 The existing VST2 source on `main`, DLL, and workflow are unchanged. VST2 and VST3
 have separate plugin identities and can be installed alongside each other.
@@ -48,8 +51,9 @@ Do not install the raw CI DLL into a VST2 folder.
 
    Administrator permission may be required. Do not copy just the inner module.
 4. Remove duplicate VST3 copies from other scanned folders, then rescan plugins.
-5. In your 64-bit host, select the **VST3** edition of **Glicol VST** and insert
-   it as an audio-track effect. It is not a MIDI instrument.
+5. In your 64-bit host, find the **VST3** edition of **Glicol VST** under the
+   instrument/synth list and insert it. MIDI notes are not required for its
+   code-generated sound; audio input remains available for `~input` programs.
 
 The adapter declares a fixed **128-sample latency** for host compensation.
 The first 128 output samples after reset are silent by design: about 2.9 ms
@@ -65,16 +69,17 @@ A compilation, factory test, or native Windows focus test does not prove that
 Cakewalk delivers keyboard messages to the plugin editor. Host acceptance is
 still required:
 
-1. Insert the **VST3 audio effect**. Click in the text editor and type, delete,
+1. Insert the **VST3 instrument** from the host's instrument/synth list. Click
+   in the text editor and type, delete,
    use arrow keys and Tab, and paste with Ctrl+V. Seeing a cursor is not enough.
-2. Confirm **VST3 0.1.4** is shown in the editor header, so Cakewalk isn't still
+2. Confirm **VST3 0.1.5** is shown in the editor header, so Cakewalk isn't still
    loading the old module. The window is now 560 × 420 logical pixels and capped
    at 600 physical pixels high when the host requests DPI scaling. Run, meters,
    and audition controls stay above the code area. The scrollbar appears only
    when the actual code extends beyond the viewport; short programs do not reserve
    a large blank scrolling area. Long programs can be scrolled by dragging the
    scrollbar or using the mouse wheel while the pointer is over the editor.
-3. Turn down monitoring, start playback, unbypass the effect, and click **Test tone**.
+3. Turn down monitoring, start playback, and click **Test tone**.
    It automatically submits:
 
    ```text
@@ -85,7 +90,7 @@ still required:
    required for this oscillator. **Mute** submits a silent program without
    discarding the editor draft. **Restore code** restores the pre-tone draft;
    it may produce audio again if the restored program is a generator.
-4. Click **Pass input** and route a known clip/live audio into the effect:
+4. Click **Pass input** and route a known clip/live audio to the plugin:
 
    ```text
    o: ~input;
@@ -94,7 +99,7 @@ still required:
    This is unity gain. The original default program, `o: ~input >> mul 0.1;`,
    still requires incoming audio and is 20 dB quieter. For live input in Cakewalk,
    select the audio device input and enable **Input Echo**. MIDI input alone is
-   not audio input for this effect.
+   not audio input for `~input` programs.
 5. Test host buffers 32, 64, 128, 192 if available, 256 and 512 at 44.1/48 kHz.
    Audio should continue after the initial 128-sample delay.
 6. Close/reopen the editor several times, type and Run again, and click back
@@ -115,7 +120,7 @@ still required:
   plugin. Check track/master mute, faders, output routing, audio device, and
   monitoring. Confirm the track isn't routed to an unused hardware output.
 - **Audio running; OUT zero with Test tone:** look for the visible **Glicol error**
-  message and confirm you loaded version 0.1.4. Report the message plus the
+  message and confirm you loaded version 0.1.5. Report the message plus the
   IN/OUT values and whether transport is running.
 
 Run applies on the next engine block instead of waiting for a musical bar.

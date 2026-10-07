@@ -147,7 +147,14 @@ fn initialization_declares_latency_and_rejects_wrong_layout() {
 }
 
 #[test]
-fn exported_vst3_factory_exposes_an_audio_effect() {
+fn vst3_subcategory_is_instrument_not_fx() {
+    let subcategories = <GlicolVst3 as Vst3Plugin>::VST3_SUBCATEGORIES;
+    assert!(subcategories.contains(&Vst3SubCategory::Instrument));
+    assert!(!subcategories.contains(&Vst3SubCategory::Fx));
+}
+
+#[test]
+fn exported_vst3_factory_exposes_audio_module_class() {
     use vst3::ComPtr;
     use vst3::Steinberg::{kResultOk, IPluginFactoryTrait, PClassInfo};
     let factory = unsafe { ComPtr::from_raw(GetPluginFactory()) }.expect("VST3 factory missing");

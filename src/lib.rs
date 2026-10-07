@@ -139,7 +139,7 @@ impl Plugin for GlicolVst3 {
     ) -> ProcessStatus {
         self.audio.process(buffer);
         // User code can be an oscillator even when the audio input is silent.
-        // Do not let the host suspend a running generator as a zero-tail effect.
+        // Do not let the host suspend a running generator as a zero-tail audio processor.
         ProcessStatus::KeepAlive
     }
 }
@@ -148,7 +148,7 @@ impl Vst3Plugin for GlicolVst3 {
     // Stable new identity: never share a class ID with VST2 or another plugin.
     const VST3_CLASS_ID: [u8; 16] = *b"DexterGlicolVST3";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
-        Vst3SubCategory::Fx,
+        Vst3SubCategory::Instrument,
         Vst3SubCategory::Tools,
         Vst3SubCategory::Stereo,
     ];

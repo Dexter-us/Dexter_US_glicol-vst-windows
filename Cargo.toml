@@ -1,10 +1,10 @@
 [package]
 name = "glicol_vst3"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 rust-version = "1.88"
 license = "MIT"
-description = "Glicol VST: a Windows VST3 stereo code-based audio effect"
+description = "Glicol VST: a Windows VST3 stereo code-based audio instrument"
 
 [lib]
 name = "glicol_vst"

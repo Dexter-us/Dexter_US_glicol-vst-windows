@@ -1,10 +1,10 @@
 # Glicol VST — Windows VST3 edition
 
-A separate MIT-licensed VST3 port of the Glicol stereo code-based audio effect.
+A separate MIT-licensed VST3 port of the Glicol stereo code-based audio instrument.
 
 - Product: **Glicol VST**
 - Manufacturer: **Dexter U.S.**
-- Format: **VST3**, 64-bit Windows, mono/stereo audio effect, no MIDI
+- Format: **VST3**, 64-bit Windows, mono/stereo audio instrument, no MIDI-note handling
 - Latency: **128 samples**, declared to the host
 - UI: compact, DPI-height-capped window; scrollbars appear when code overflows
 - Disk programs: native Save text/Load text dialogs, safe UTF-8 writes; loaded
